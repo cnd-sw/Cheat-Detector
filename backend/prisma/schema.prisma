@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PROCTOR
+  STUDENT
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum SessionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  TERMINATED
+  FLAGGED
+}
+
+enum QuestionType {
+  MCQ
+  TRUE_FALSE
+  SHORT_ANSWER
+  ESSAY
+}
+
+enum EventSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  plan      String   @default("free")
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+  exams Exam[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  password       String
+  firstName      String
+  lastName       String
+  role           Role     @default(STUDENT)
+  facePhotoUrl   String?
+  organizationId String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id])
+  sessions     ExamSession[]
+
+  @@map("users")
+}
+
+model Exam {
+  id             String     @id @default(uuid())
+  title          String
+  description    String?
+  organizationId String
+  status         ExamStatus @default(DRAFT)
+  timeLimit      Int        // in minutes
+  randomize      Boolean    @default(true)
+  shuffleOptions Boolean    @default(true)
+  passingScore   Float      @default(50.0)
+  maxAttempts    Int        @default(1)
+  settings       Json       @default("{}")
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  questions    Question[]
+  sessions     ExamSession[]
+
+  @@map("exams")
+}
+
+model Question {
+  id       String       @id @default(uuid())
+  examId   String
+  type     QuestionType @default(MCQ)
+  content  String       // the question text
+  options  Json?        // array of options for MCQ
+  answer   String       // correct answer
+  points   Float        @default(1.0)
+  order    Int          @default(0)
+  metadata Json         @default("{}")
+
+  exam    Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@map("questions")
+}
+
+model ExamSession {
+  id                String        @id @default(uuid())
+  userId            String
+  examId            String
+  status            SessionStatus @default(PENDING)
+  startTime         DateTime?
+  endTime           DateTime?
+  ipAddress         String?
+  userAgent         String?
+  deviceFingerprint String?
+  suspicionScore    Float         @default(0)
+  riskLevel         String        @default("clean") // clean, review, high_risk
+  metadata          Json          @default("{}")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  user    User           @relation(fields: [userId], references: [id])
+  exam    Exam           @relation(fields: [examId], references: [id])
+  events  ProctorEvent[]
+  answers Answer[]
+  result  ExamResult?
+
+  @@unique([userId, examId])
+  @@map("exam_sessions")
+}
+
+model ProctorEvent {
+  id        String        @id @default(uuid())
+  sessionId String
+  eventType String
+  severity  EventSeverity @default(LOW)
+  weight    Float         @default(0)
+  metadata  Json          @default("{}")
+  timestamp DateTime      @default(now())
+
+  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, timestamp])
+  @@map("proctor_events")
+}
+
+model Answer {
+  id          String   @id @default(uuid())
+  sessionId   String
+  questionId  String
+  response    String?
+  timeTakenMs Int      @default(0)
+  isCorrect   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  session  ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+  @@map("answers")
+}
+
+model ExamResult {
+  id          String   @id @default(uuid())
+  sessionId   String   @unique
+  score       Float    @default(0)
+  totalPoints Float    @default(0)
+  percentage  Float    @default(0)
+  passed      Boolean  @default(false)
+  flagsCount  Int      @default(0)
+  reportUrl   String?
+  createdAt   DateTime @default(now())
+
+  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("exam_results")
+}
