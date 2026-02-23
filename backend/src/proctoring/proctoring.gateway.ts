@@ -55,7 +55,7 @@ export class ProctoringGateway implements OnGatewayConnection, OnGatewayDisconne
         client.join(`session_${data.sessionId}`);
 
         // Notify proctors that a student joined
-        this.server.to(`proctor_${data.examId}`).emit('student_joined', {
+        this.server.to(`proctor_${data.examId}`).to('proctors_global').emit('student_joined', {
             sessionId: data.sessionId,
             userId: this.connectedUsers.get(client.id),
             timestamp: new Date(),
@@ -66,6 +66,10 @@ export class ProctoringGateway implements OnGatewayConnection, OnGatewayDisconne
 
     @SubscribeMessage('proctor_join')
     handleProctorJoin(@ConnectedSocket() client: Socket, @MessageBody() data: { examId: string }) {
+        if (data.examId === 'global') {
+            client.join('proctors_global');
+            return { status: 'joined_global_monitoring' };
+        }
         client.join(`exam_${data.examId}`);
         client.join(`proctor_${data.examId}`);
         return { status: 'proctor_joined' };
@@ -88,7 +92,7 @@ export class ProctoringGateway implements OnGatewayConnection, OnGatewayDisconne
         );
 
         // Broadcast to proctors in real-time
-        this.server.to(`proctor_${data.examId}`).emit('suspicion_alert', {
+        this.server.to(`proctor_${data.examId}`).to('proctors_global').emit('suspicion_alert', {
             sessionId: data.sessionId,
             userId,
             type: data.type,
@@ -108,7 +112,7 @@ export class ProctoringGateway implements OnGatewayConnection, OnGatewayDisconne
     ) {
         // In a real app, we'd upload to S3 here. 
         // For the MVP, we stream the snapshot to the proctor dashboard for live monitoring.
-        this.server.to(`proctor_${data.examId}`).emit('live_snapshot', {
+        this.server.to(`proctor_${data.examId}`).to('proctors_global').emit('live_snapshot', {
             sessionId: data.sessionId,
             image: data.image,
             timestamp: new Date(),

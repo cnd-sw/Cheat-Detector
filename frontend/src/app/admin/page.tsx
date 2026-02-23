@@ -23,29 +23,58 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 export default function ProctorDashboard() {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [alerts, setAlerts] = useState<any[]>([]);
-    const [liveStudents, setLiveStudents] = useState<any[]>([
-        { id: 's1', name: 'John Cooper', status: 'ACTIVE', risk: 'clean', score: 0, lastActivity: '2m ago' },
-        { id: 's2', name: 'Sarah Miller', status: 'ACTIVE', risk: 'review', score: 35, lastActivity: 'Just now' },
-        { id: 's3', name: 'Mike Ross', status: 'ACTIVE', risk: 'high_risk', score: 72, lastActivity: '1m ago' },
-        { id: 's4', name: 'James Wilson', status: 'OFFLINE', risk: 'clean', score: 10, lastActivity: '1h ago' },
-    ]);
+    const [liveStudents, setLiveStudents] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const token = useAuthStore(s => s.token);
+    const { token, user } = useAuthStore(s => ({ token: s.token, user: s.user }));
+
+    const fetchActiveSessions = async () => {
+        if (!token) return;
+        try {
+            const res = await fetch('http://localhost:4000/sessions/active/all', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setLiveStudents(data.map((s: any) => ({
+                    id: s.id,
+                    userId: s.userId,
+                    name: `${s.user.firstName} ${s.user.lastName}`,
+                    status: s.status,
+                    risk: s.riskLevel,
+                    score: s.suspicionScore,
+                    lastActivity: 'Just now',
+                    examTitle: s.exam.title
+                })));
+            }
+        } catch (err) {
+            console.error('Failed to fetch sessions', err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     useEffect(() => {
         if (!token) return;
+        fetchActiveSessions();
+
         const s = io('http://localhost:4000', { auth: { token: `Bearer ${token}` } });
         setSocket(s);
 
         s.on('connect', () => {
-            s.emit('proctor_join', { examId: 'exam-1' });
+            console.log('Connected to socket server');
+            s.emit('proctor_join', { examId: 'global' });
+        });
+
+        s.on('student_joined', (data) => {
+            fetchActiveSessions();
         });
 
         s.on('suspicion_alert', (data) => {
-            setAlerts(prev => [data, ...prev].slice(0, 10));
+            setAlerts(prev => [data, ...prev].slice(0, 15));
             // Update student risk status in real-time
             setLiveStudents(prev => prev.map(s =>
-                s.id === data.userId ? { ...s, score: data.totalScore, risk: data.severity.toLowerCase() } : s
+                s.userId === data.userId ? { ...s, score: data.totalScore, risk: data.severity.toLowerCase() } : s
             ));
         });
 
@@ -147,8 +176,8 @@ export default function ProctorDashboard() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider ${s.risk === 'high_risk' ? 'bg-red-400/10 text-red-500 border-red-500/20' :
-                                                        s.risk === 'review' ? 'bg-orange-400/10 text-orange-500 border-orange-500/20' :
-                                                            'bg-emerald-400/10 text-emerald-500 border-emerald-500/20'
+                                                    s.risk === 'review' ? 'bg-orange-400/10 text-orange-500 border-orange-500/20' :
+                                                        'bg-emerald-400/10 text-emerald-500 border-emerald-500/20'
                                                     }`}>
                                                     {s.risk.replace('_', ' ')}
                                                 </div>

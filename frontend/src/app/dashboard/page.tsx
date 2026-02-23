@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/useStore';
 import { BookOpen, Clock, Calendar, ShieldCheck, TrendingUp, Award, ExternalLink, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
@@ -7,33 +8,37 @@ import { useRouter } from 'next/navigation';
 
 export default function StudentDashboard() {
     const user = useAuthStore((state) => state.user);
+    const token = useAuthStore((state) => state.token);
     const router = useRouter();
+    const [exams, setExams] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
-    if (!user) {
-        if (typeof window !== 'undefined') router.push('/');
-        return null;
-    }
-
-    const exams = [
-        {
-            id: 'exam-1',
-            title: 'Advanced Computer Architecture',
-            description: 'Covers pipelining, memory hierarchy, and quantitative principles of computer design.',
-            timeLimit: 60,
-            questionCount: 40,
-            difficulty: 'Hard',
-            status: 'AVAILABLE'
-        },
-        {
-            id: 'exam-2',
-            title: 'Ethical Hacking & Network Security',
-            description: 'Practical exam on penetration testing and defensive security configurations.',
-            timeLimit: 90,
-            questionCount: 25,
-            difficulty: 'Expert',
-            status: 'AVAILABLE'
+    const fetchExams = async () => {
+        if (!token) return;
+        try {
+            const res = await fetch('http://localhost:4000/exams/available', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setExams(data);
+            }
+        } catch (err) {
+            console.error('Failed to fetch exams', err);
+        } finally {
+            setIsLoading(false);
         }
-    ];
+    };
+
+    useEffect(() => {
+        if (!user) {
+            router.push('/');
+        } else {
+            fetchExams();
+        }
+    }, [user, token]);
+
+    if (!user) return null;
 
     const pastResults = [
         {
@@ -44,14 +49,6 @@ export default function StudentDashboard() {
             status: 'Passed',
             flags: 0,
         },
-        {
-            id: 'res-2',
-            examTitle: 'Operating Systems - Term 1',
-            score: 78,
-            date: '2024-02-01',
-            status: 'Passed',
-            flags: 2,
-        }
     ];
 
     return (
